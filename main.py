@@ -90,7 +90,7 @@ def insert():
         result = db.run(sql_message.content, include_columns=True)   
         
         # Convert the result to JSON
-        if result is "":
+        if result == "":
           return jsonify({'query': sql_message.content,'result': 'success'}), 201
         else:
           data = ast.literal_eval(result)
@@ -132,11 +132,53 @@ def delete():
         result = db.run(sql_message.content, include_columns=True)   
         
         # Convert the result to JSON
-        if result is "":
-          return jsonify({'query': sql_message.content,'result': 'success'}), 201
+        if result == "":
+          return jsonify({'query': sql_message.content,'result': 'success'}), 200
         else:
           data = ast.literal_eval(result)
-          return jsonify({'query': sql_message.content,'result': data}), 201
+          return jsonify({'query': sql_message.content,'result': data}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    
+
+@app.route('/query', methods=['PUT'])
+def update():
+    user_request = json.dumps(request.json)
+
+    messages = [
+        (
+            "system",
+            f"""
+            Your task is to generate SQL queries based on user requests. 
+            You are a helpful assistant that can understand natural language and convert it into SQL queries. 
+            You should only create queries based on the tables and columns in the datbase {table_info}.
+            Do not make up any tables or columns, verify the table names and column names exists the database.
+            You should always use explicit column names in your queries, like TableName.ColumnName.
+            You should never drop tables.
+            You should return a maximum of 1 SQL query.
+            You should only respond with the SQL query and nothing else.
+            The SQL should only update one or more items in the database.
+            If you can't generate a SQL query, respond with "NULL".
+            Thank you!
+            """,
+        ),
+        ("human", user_request),
+    ]
+    sql_message = llm.invoke(messages)
+
+    if not sql_message.content or sql_message.content.strip().upper() == "NULL":
+        return jsonify({'error': 'Unable to generate SQL query'}), 400
+    # Execute the SQL query
+    print(sql_message.content)
+    try:
+        result = db.run(sql_message.content, include_columns=True)   
+        
+        # Convert the result to JSON
+        if result == "":
+          return jsonify({'query': sql_message.content,'result': 'success'}), 200
+        else:
+          data = ast.literal_eval(result)
+          return jsonify({'query': sql_message.content,'result': data}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 400
     
