@@ -17,11 +17,53 @@ table_info = db.get_table_info()
 
 # Cache for storing user requests and their corresponding SQL messages
 @lru_cache(maxsize=100)
-def get_cached_sql_message(user_request):
+def get_cached_sql_message(user_request, system_prompt):
     messages = [
-        (
-            "system",
-            f"""
+        ("system",system_prompt),
+        ("human", user_request),
+    ]
+    return llm.invoke(messages)
+
+def generate_sql_message(user_request, system_prompt):
+    """Generate or retrieve a cached SQL message."""
+    messages = [
+        ("system", system_prompt),
+        ("human", user_request),
+    ]
+    return llm.invoke(messages)
+
+def execute_sql_query(sql_query):
+    """Execute the SQL query and return the result."""
+    try:
+        result = db.run(sql_query, include_columns=True)
+        if result == "":
+            return {'query': sql_query, 'result': 'success'}, 200
+        else:
+            data = ast.literal_eval(result)
+            return {'query': sql_query, 'result': data}, 200
+    except Exception as e:
+        return {'error': str(e)}, 400
+
+def handle_request(request, system_prompt):
+    """Handle a user request by generating and executing an SQL query."""
+    user_request = json.dumps(request.json)
+    if request.method == 'GET':
+        sql_message = get_cached_sql_message(user_request, system_prompt)
+    else:
+      sql_message = generate_sql_message(user_request, system_prompt)
+
+    if not sql_message.content or sql_message.content.strip().upper() == "NULL":
+        return {'error': 'Unable to generate SQL query'}, 400
+
+    return execute_sql_query(sql_message.content)
+
+@app.route('/query', methods=['GET', 'POST', 'DELETE', 'PUT'])
+def query():
+    
+
+    # Define system prompts for each method
+    system_prompts = {
+        'GET': f"""
             Your task is to generate SQL queries based on user requests. 
             You are a helpful assistant that can understand natural language and convert it into SQL queries. 
             You should only create queries based on the tables and columns in the datbase {table_info}.
@@ -30,42 +72,10 @@ def get_cached_sql_message(user_request):
             You should return a maximum of 1 SQL query.
             You should only respond with the SQL query and nothing else.
             You should only retrieve data from the database and not modify it.
-            If you can't generate a SQL query, respond with "NULL".
+            If you can't generate a SQL query, respond with \"NULL\".
             Thank you!
-            """,
-        ),
-        ("human", user_request),
-    ]
-    return llm.invoke(messages)
-
-@app.route('/query', methods=['GET'])
-def get():
-    user_request = json.dumps(request.json)
-
-    # Check cache for SQL message
-    sql_message = get_cached_sql_message(user_request)
-
-    if not sql_message.content or sql_message.content.strip().upper() == "NULL":
-        return jsonify({'error': 'Unable to generate SQL query'}), 400
-
-    # Execute the SQL query
-    try:
-        result = db.run(sql_message.content, include_columns=True)   
-        # Convert the result to JSON
-        data = ast.literal_eval(result)
-        return jsonify({'query': sql_message.content,'result': data})    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
-    
-
-@app.route('/query', methods=['POST'])
-def insert():
-    user_request = json.dumps(request.json)
-
-    messages = [
-        (
-            "system",
-            f"""
+        """,
+        'POST': f"""
             Your task is to generate SQL queries based on user requests. 
             You are a helpful assistant that can understand natural language and convert it into SQL queries. 
             You should only create queries based on the tables and columns in the datbase {table_info}.
@@ -74,117 +84,42 @@ def insert():
             You should return a maximum of 1 SQL query.
             You should only respond with the SQL query and nothing else.
             You should only modify data in the database by adding items and not retrieve it.
-            If you can't generate a SQL query, respond with "NULL".
+            If you can't generate a SQL query, respond with \"NULL\".
             Thank you!
-            """,
-        ),
-        ("human", user_request),
-    ]
-    sql_message = llm.invoke(messages)
-
-    if not sql_message.content or sql_message.content.strip().upper() == "NULL":
-        return jsonify({'error': 'Unable to generate SQL query'}), 400
-    # Execute the SQL query
-    print(sql_message.content)
-    try:
-        result = db.run(sql_message.content, include_columns=True)   
-        
-        # Convert the result to JSON
-        if result == "":
-          return jsonify({'query': sql_message.content,'result': 'success'}), 201
-        else:
-          data = ast.literal_eval(result)
-          return jsonify({'query': sql_message.content,'result': data}), 201
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
-
-    
-@app.route('/query', methods=['DELETE'])
-def delete():
-    user_request = json.dumps(request.json)
-
-    messages = [
-        (
-            "system",
-            f"""
+        """,
+        'DELETE': f"""
             Your task is to generate SQL queries based on user requests. 
             You are a helpful assistant that can understand natural language and convert it into SQL queries. 
             You should only create queries based on the tables and columns in the datbase {table_info}.
-            Do not make up any tables or columns, verify the table names and column names exists the database.
+            Do not make up any tables or columns, verify the table names and column names exist in the database.
             You should always use explicit column names in your queries, like TableName.ColumnName.
             You should never drop tables.
             You should return a maximum of 1 SQL query.
             You should only respond with the SQL query and nothing else.
             The SQL should only delete one or more items in the database.
-            If you can't generate a SQL query, respond with "NULL".
+            If you can't generate a SQL query, respond with \"NULL\".
             Thank you!
-            """,
-        ),
-        ("human", user_request),
-    ]
-    sql_message = llm.invoke(messages)
-
-    if not sql_message.content or sql_message.content.strip().upper() == "NULL":
-        return jsonify({'error': 'Unable to generate SQL query'}), 400
-    # Execute the SQL query
-    print(sql_message.content)
-    try:
-        result = db.run(sql_message.content, include_columns=True)   
-        
-        # Convert the result to JSON
-        if result == "":
-          return jsonify({'query': sql_message.content,'result': 'success'}), 200
-        else:
-          data = ast.literal_eval(result)
-          return jsonify({'query': sql_message.content,'result': data}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
-    
-
-@app.route('/query', methods=['PUT'])
-def update():
-    user_request = json.dumps(request.json)
-
-    messages = [
-        (
-            "system",
-            f"""
+        """,
+        'PUT': f"""
             Your task is to generate SQL queries based on user requests. 
             You are a helpful assistant that can understand natural language and convert it into SQL queries. 
             You should only create queries based on the tables and columns in the datbase {table_info}.
-            Do not make up any tables or columns, verify the table names and column names exists the database.
+            Do not make up any tables or columns, verify the table names and column names exist in the database.
             You should always use explicit column names in your queries, like TableName.ColumnName.
             You should never drop tables.
             You should return a maximum of 1 SQL query.
             You should only respond with the SQL query and nothing else.
             The SQL should only update one or more items in the database.
-            If you can't generate a SQL query, respond with "NULL".
+            If you can't generate a SQL query, respond with \"NULL\".
             Thank you!
-            """,
-        ),
-        ("human", user_request),
-    ]
-    sql_message = llm.invoke(messages)
+        """,
+    }
 
-    if not sql_message.content or sql_message.content.strip().upper() == "NULL":
-        return jsonify({'error': 'Unable to generate SQL query'}), 400
-    # Execute the SQL query
-    print(sql_message.content)
-    try:
-        result = db.run(sql_message.content, include_columns=True)   
-        
-        # Convert the result to JSON
-        if result == "":
-          return jsonify({'query': sql_message.content,'result': 'success'}), 200
-        else:
-          data = ast.literal_eval(result)
-          return jsonify({'query': sql_message.content,'result': data}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    system_prompt = system_prompts[request.method]
+    response, status_code = handle_request(request, system_prompt)
+    return jsonify(response), status_code
     
 
 
-
 if __name__ == '__main__':
-    #init_db()
     app.run(debug=True)
