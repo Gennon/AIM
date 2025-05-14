@@ -64,4 +64,216 @@ The idea is that the user sends in some structured data and a LLM will generate 
    ```
 
 
+## Usage
 
+The API should provide standard CRUD operations (Create, Read, Update, Delete) for the database. The API will accept JSON payloads with structured data and return the results in a structured format.
+
+### Read  
+`GET /query`: This endpoint accepts a JSON payload with data containing the user's query. The API will process the request and return the result.
+
+Example request:
+```json
+{
+  "request": "Get all artists"
+}
+```
+Example response:
+```json
+{
+  "query": "SELECT * FROM artists",
+  "result": [
+    {
+      "ArtistId": 1,
+      "Name": "AC/DC"
+    },
+    {
+      "ArtistId": 2,
+      "Name": "Accept"
+    }
+  ]
+}
+```
+
+A more advanced example:
+```json
+{
+  "Albums": {
+      "AlbumName": "string"
+  }
+}
+```
+Example response:
+```json
+{
+  "query": "SELECT Album.Title AS AlbumName FROM Album;",
+  "result": [
+    {
+			"AlbumName": "For Those About To Rock We Salute You"
+		},
+		{
+			"AlbumName": "Balls to the Wall"
+		},
+  ]
+}
+
+Even more advanced example:
+```json
+{
+  "request": {
+    "Albums": {
+        "AlbumName": "string",
+        "Artist": "string",
+        "NumberOfTracks": {
+            "type": "int",
+            "value": "10 < x < 15"
+        }
+    }
+  }
+}
+```
+Example response:
+```json
+{
+  "query": """
+  SELECT Album.Title AS AlbumName, Artist.Name AS Artist, COUNT(*) AS NumberOfTracks
+  FROM Album
+    JOIN Artist ON Album.ArtistId = Artist.ArtistId
+    JOIN Track ON Album.AlbumId = Track.AlbumId
+    GROUP BY Album.Title, Artist.Name
+    HAVING COUNT(*) BETWEEN 10 AND 14;",
+  "result": [
+    {
+			"AlbumName": "20th Century Masters - The Millennium Collection: The Best of Scorpions",
+			"Artist": "Scorpions",
+			"NumberOfTracks": 12
+		},
+		{
+			"AlbumName": "A Matter of Life and Death",
+			"Artist": "Iron Maiden",
+			"NumberOfTracks": 11
+		},
+  ]
+}
+```
+
+
+### Create
+`POST /query`: This endpoint accepts a JSON payload with data containing the user's query. The API will process the request and return the result.
+Example request:
+```json
+{
+  "Customer": {
+    "FirstName": "Johny",
+    "LastName": "Smither",
+    "Email": "johny.smither@testing.com"
+  }
+}
+```
+
+Example response:
+```json
+{
+  "query": """
+  INSERT INTO Customer (FirstName, LastName, Email) 
+  VALUES ('Johny', 'Smither', 'johny.smither@testing.com');
+  """,
+	"result": "success"
+}
+```
+
+A more advanced example:
+```json
+{
+  "Customer": {
+    "Name": "Jane Doit",
+    "Email": "jane.doit@testing.com"
+  }
+}
+````
+
+Example response:
+```json
+{
+  "query": """
+  INSERT INTO Customer (FirstName, LastName, Email) 
+  VALUES ('Jane', 'Doit', 'jane.doit@testing.com');
+  """,
+	"result": "success"
+}
+```
+
+### Update
+`PUT /query`: This endpoint accepts a JSON payload with data containing the user's query. The API will process the request and return the result.
+Example request:
+```json
+{
+  "Customer": {
+    "CustomerId": 64,
+    "FullName": "Jane Does",
+    "Email": "jane.does@testing.com"
+  }
+}
+```
+Example response:
+```json
+{
+  "query": """
+  UPDATE Customer 
+  SET FirstName = 'Jane', LastName = 'Does', Email = 'jane.does@testing.com' 
+  WHERE CustomerId = 64;
+  """,
+	"result": "success"
+}
+```
+
+### Delete
+`DELETE /query`: This endpoint accepts a JSON payload with data containing the user's query. The API will process the request and return the result.
+Example request:
+```json
+{
+  "Customer": {
+    "CustomerId": 64
+  }
+}
+```
+Example response:
+```json
+{
+  "query": "DELETE FROM Customer WHERE CustomerId = 64;",
+  "result": "success"
+}
+```
+
+A more advanced example:
+```json
+{
+  "Invoice": {
+    "Customer": {
+      "FullName": "Bjørn Hansen"
+    },
+    "InvoiceLine": {
+      "TrackId": {
+        "Name": "Put The Finger On You"
+      }
+    }
+  }
+}
+```
+Example response:
+```json
+{
+  "query": """
+    DELETE FROM InvoiceLine
+    WHERE InvoiceLine.InvoiceId IN (
+      SELECT Invoice.InvoiceId 
+      FROM Invoice JOIN Customer ON Invoice.CustomerId = Customer.CustomerId 
+      WHERE CONCAT(Customer.FirstName, ' ', Customer.LastName) = 'Bjørn Hansen'
+    )
+    AND TrackId IN (
+      SELECT TrackId 
+      FROM Track
+      WHERE Name = 'Put The Finger On You'
+    );""",
+	"result": "success"
+}
+```
