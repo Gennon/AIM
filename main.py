@@ -32,17 +32,6 @@ def generate_sql_message(user_request, system_prompt):
     ]
     return llm.invoke(messages)
 
-def execute_sql_query(sql_query):
-    """Execute the SQL query and return the result."""
-    try:
-        result = db.run(sql_query, include_columns=True)
-        if result == "":
-            return {'query': sql_query, 'result': 'success'}, 200
-        else:
-            data = ast.literal_eval(result)
-            return {'query': sql_query, 'result': data}, 200
-    except Exception as e:
-        return {'error': str(e)}, 400
 
 def handle_request(request, system_prompt):
     """Handle a user request by generating and executing an SQL query."""
@@ -52,10 +41,39 @@ def handle_request(request, system_prompt):
     else:
       sql_message = generate_sql_message(user_request, system_prompt)
 
+    print(f"SQL Message: {sql_message.content}")
     if not sql_message.content or sql_message.content.strip().upper() == "NULL":
         return {'error': 'Unable to generate SQL query'}, 400
+    
+    return execute_sql_queries(sql_message.content)
 
-    return execute_sql_query(sql_message.content)
+def execute_sql_queries(sql_query):
+    """Execute the SQL queries and return the result."""
+    sql_queries: str = sql_query.split(';')
+    results = []
+    try:
+      for query in sql_queries:
+          query = query.strip()
+          if query:
+              result = execute_sql_query(query)
+              results.append(result)
+    
+      if len(results) == 1:
+          return {'query': sql_queries[0], 'result': results[0]}, 200
+      else:
+          return {'query': sql_queries[0], 'result': results[-1]}, 200
+    except Exception as e:
+        return {'error': str(e)}, 400
+
+def execute_sql_query(sql_query):
+    """Execute the SQL querys and return the result."""
+    result = db.run(sql_query, include_columns=True)
+    if result == "":
+        return 'success'
+    else:
+        data = ast.literal_eval(result)
+        return data
+    
 
 @app.route('/query', methods=['GET', 'POST', 'DELETE', 'PUT'])
 def query():
@@ -83,7 +101,8 @@ def query():
             You should never drop tables.
             You should return a maximum of 1 SQL query.
             You should only respond with the SQL query and nothing else.
-            You should only modify data in the database by adding items and not retrieve it.
+            You should only modify data in the database by adding items.
+            You should create a query that first inserts and then selects the data.
             If you can't generate a SQL query, respond with \"NULL\".
             Thank you!
         """,
@@ -110,6 +129,7 @@ def query():
             You should return a maximum of 1 SQL query.
             You should only respond with the SQL query and nothing else.
             The SQL should only update one or more items in the database.
+            You should create a query that first updates and then selects the data.
             If you can't generate a SQL query, respond with \"NULL\".
             Thank you!
         """,
